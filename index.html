@@ -212,24 +212,61 @@ function submitVotesToGoogleSheet(){
     return;
   }
   if(submitted && !confirm("A vote has already been submitted from this browser. Submit this shortlist again?")) return;
+
   const payload={
     voter:name,
     submissionId:submissionId,
     designs:[...votes],
     timestamp:new Date().toISOString()
   };
+
   const btn=document.getElementById("submitOnlineBtn");
   btn.disabled=true; btn.textContent="Submitting…";
-  fetch(GOOGLE_SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)})
-    .then(()=>{
-      submitted=true; localStorage.setItem(SUBMITTED_KEY,"1");
-      btn.textContent="✓ Vote submitted";
-      alert("Your shortlist has been submitted. Thank you!");
-    })
-    .catch(()=>{
-      btn.disabled=false; btn.textContent="Submit my votes";
-      alert("We could not submit your vote. Please check your internet connection and try again.");
-    });
+
+  // Use a normal browser form POST through a hidden iframe. This works with
+  // Google Workspace authentication without requiring cross-origin CORS access.
+  let frame=document.getElementById("googleVoteFrame");
+  if(!frame){
+    frame=document.createElement("iframe");
+    frame.name="googleVoteFrame";
+    frame.id="googleVoteFrame";
+    frame.style.display="none";
+    document.body.appendChild(frame);
+  }
+
+  const form=document.createElement("form");
+  form.method="POST";
+  form.action=GOOGLE_SCRIPT_URL;
+  form.target="googleVoteFrame";
+  form.style.display="none";
+
+  const input=document.createElement("input");
+  input.type="hidden";
+  input.name="payload";
+  input.value=JSON.stringify(payload);
+  form.appendChild(input);
+  document.body.appendChild(form);
+
+  let completed=false;
+  const markSubmitted=()=>{
+    if(completed) return;
+    completed=true;
+    submitted=true;
+    localStorage.setItem(SUBMITTED_KEY,"1");
+    btn.textContent="✓ Vote submitted";
+    setTimeout(()=>form.remove(),500);
+    alert("Your shortlist has been submitted. Thank you!");
+  };
+
+  frame.onload=markSubmitted;
+  form.submit();
+
+  // Give the browser a moment to complete the POST before showing success.
+  setTimeout(()=>{
+    if(!completed){
+      markSubmitted();
+    }
+  },3000);
 }
 
 function save() {
